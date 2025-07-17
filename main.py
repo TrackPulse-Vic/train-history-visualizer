@@ -8,12 +8,30 @@ load_dotenv()
 if not os.getenv('THUNDERFOREST_KEY'):
     raise ValueError("Thunderforest API key is not set in the environment. Please set it in the .env file.")    
 
-
-def plot_map(coords, popup_data, line_color):
-    m = folium.Map(location=coords[0], zoom_start=10, tiles='https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey='+ os.getenv('THUNDERFOREST_KEY'), attr='Maps © Thunderforest, Data © OpenStreetMap contributors')
+def plot_map(coords, popup_data, line_names, color_map):
+    m = folium.Map(location=coords[0], zoom_start=10, 
+                  tiles='https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey='+ os.getenv('THUNDERFOREST_KEY'), 
+                  attr='Maps © Thunderforest, Data © OpenStreetMap contributors')
+    
     for (lat, lon), popup_text in zip(coords, popup_data):
         folium.Marker([lat, lon], popup=popup_text).add_to(m)
-    folium.PolyLine(coords, color=line_color, weight=2.5, opacity=1).add_to(m)
+    
+    current_line = line_names[0]
+    segment_coords = [coords[0]]
+    
+    for i in range(1, len(coords)):
+        if line_names[i] != current_line:
+            segment_coords.append(coords[i-1])
+            line_color = color_map.get(current_line, '#FFFF00')  # Default to yellow if not found
+            folium.PolyLine(segment_coords, color=line_color, weight=2.5, opacity=1).add_to(m)
+            
+            segment_coords = [coords[i-1]]
+            current_line = line_names[i]
+        segment_coords.append(coords[i])
+    
+    line_color = color_map.get(current_line, '#FFFF00')
+    folium.PolyLine(segment_coords, color=line_color, weight=2.5, opacity=1).add_to(m)
+    
     return m
 
 color_map = {
@@ -37,22 +55,19 @@ color_map = {
 trainNumber = input('Enter train number: ')
 coords = []
 popup_data = []
-first_column_value = None
+line_names = []
 
 with open(f'{trainNumber}.csv', 'r') as file:
     reader = csv.reader(file)
     for i, row in enumerate(reader):
         try:
-            if i == 0:
-                first_column_value = row[0]
             lat = float(row[5])
             lon = float(row[6])
             coords.append([lat, lon])
             popup_data.append(f'{row[0]} line to {row[4]} | {row[7]}' if len(row) > 7 else f'{row[0]} to {row[4]}')
+            line_names.append(row[0])
         except (ValueError, IndexError):
-            print(f"Skipping icon on invalid row.")
+            print(f"Skipping invalid row {i+1}.")
 
-# Default to blue
-line_color = color_map.get(first_column_value, 'YELLOW')
-map_obj = plot_map(coords, popup_data, line_color)
+map_obj = plot_map(coords, popup_data, line_names, color_map)
 map_obj.save("map.html")
